@@ -1,0 +1,122 @@
+nav(class=['sb-sidenav', 'accordion'] class=sidenavStyle)#sidenavAccordion
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>    
+    .sb-sidenav-menu
+        .nav
+            .sb-sidenav-menu-heading 
+            a.nav-link()
+                .sb-nav-link-icon 
+                    | New Workspace
+        #dv1.sb-sidenav-menu  
+    .sb-sidenav-footer
+        .small Logged in as:
+        | Start Bootstrap
+    .resize-handle    
+    script.
+        let columns=""
+        let schemas={}
+        let schemas_all={}
+        let html=""
+        document.addEventListener('DOMContentLoaded', async () => {
+            const sidenav = document.getElementById("sidenavAccordion");
+            const resizeHandle = document.querySelector(".resize-handle");
+            let isResizing = false;
+            // Mouse down event to start resizing
+            resizeHandle.addEventListener("mousedown", (e) => {
+                isResizing = true;
+                document.body.style.cursor = "ew-resize";
+            });
+            // Mouse move event to resize the sidebar
+            document.addEventListener("mousemove", (e) => {
+                if (isResizing) {
+                    const newWidth = e.clientX; // Mouse position on X-axis
+                    const minWidth = 150; // Minimum width
+                    const maxWidth = 500; // Maximum width
+
+                    // Adjust width within the bounds
+                    if (newWidth > minWidth && newWidth < maxWidth) {
+                        sidenav.style.width = `${newWidth}px`;
+                    }
+                }
+            });
+
+            // Mouse up event to stop resizing
+            document.addEventListener("mouseup", () => {
+                isResizing = false;
+                document.body.style.cursor = "default";
+            });  
+            //- ----------- The below peice of code is to get all the workspace datasets 
+            try {
+                (async () => {
+                // Fetch datasets from the server
+                const response = await fetch('https://q8dt20upv8.execute-api.us-east-1.amazonaws.com/dev/read_dynamo/?table=work_space_datasets&DataRetreivalType=All');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                const datasets = await response.json();
+                // Select the sidebar container
+                const sidebarNav = document.querySelector('.nav');
+                datasets.forEach(dataset => {
+                html=""
+                let dataset_name = dataset.dataset
+                html += `
+                    <div><ul class="ul_class">
+                    <li><input type="radio" id="${dataset_name}" name="fileSelection" value="${dataset_name}">
+                        <span class="toggle-btn" id="${dataset_name}" style="cursor: pointer;">+</span>
+                        <span style="display: inline-block; margin-left: 5px;">${dataset_name.split('/').pop()}</span>
+                        <ul class="schema-columns" style="display: none;"></ul>
+                    </li>`;
+                (async () => {
+                const resp2 = await fetch(`https://q8dt20upv8.execute-api.us-east-1.amazonaws.com/dev/get_table_schema/?dataset=${encodeURIComponent(dataset_name)}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-type': 'application/json',
+                    },
+                    mode: 'cors',
+                    });
+                if (resp2.status === 404) {
+                    console.error('404 Error: Schema not found for', dataset_name);
+                    return null;
+                } else if (!resp2.ok) {
+                    console.error('Error:', resp2.status, resp2.statusText);
+                    return null;
+                }
+                let results2 = await resp2.json();
+                const columns = Object.keys(results2.insights);
+                schemas[dataset_name.split("/").pop()]= columns;
+                schemas_all[dataset_name] = columns;
+                })()               
+                const sidebarNav = document.querySelector('.nav');
+                html += '</ul></div>';
+                $('#dv1').append(html);
+                });
+                })();
+            } catch (error) {
+                    console.error('Error loading datasets:', error);
+                }
+        });
+        // Add the toggle functionality after rendering
+        $('#dv1').on('click', '.toggle-btn', async function () {
+        //- $('.toggle-btn').click(async function () {
+            const $btn = $(this);
+            const $columnsList = $btn.next().next('.schema-columns'); // Find the schema columns list
+            // Toggle the visibility and change the button text
+            if ($columnsList.is(':visible')) {
+                $columnsList.hide();
+                $columnsList.empty();
+                $btn.text('+');
+            } else {
+                $btn.text('-');
+                    dataset = $btn.next().text().trim();
+                    const columns = schemas[dataset];
+                    const col_keys=columns
+                    if (col_keys) {
+                        col_keys.forEach(column => {
+                            $columnsList.append(`<li draggable="true" ondragstart="drag(event)">${column}</li>`);
+                        });
+                    } else {
+                        $columnsList.append('<li>Schema could not be fetched</li>');
+                    }
+                $columnsList.show();
+                }
+        });
+        

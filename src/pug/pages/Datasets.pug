@@ -1,0 +1,780 @@
+extends ../layouts/dashboard.pug
+
+block config
+    - var bodyClass = 'sb-nav-fixed'
+    - var pageTitle = 'Welcome to Explore-Data';
+    - var index = true;
+    - var sidenavStyle = 'sb-sidenav-light'
+
+prepend css
+    //- Load Simple DataTables Stylesheet
+    link(href='https://cdn.jsdelivr.net/npm/simple-datatables@7.1.2/dist/style.min.css', rel='stylesheet')
+
+block content
+    .container-fluid
+        h1.mb-4= pageTitle
+        script(src="https://code.jquery.com/jquery-3.6.0.min.js") // Include jQuery for easy AJAX handling
+        <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.css">
+        <!-- DataTables JS (after jQuery) -->
+        <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        h3='Datasets'
+        div#breadcrumb
+        div#hierarchyContainer
+        div#buttonsContainer
+        ul#files 
+        // Container to hold the insights table
+        div#insightsContainer 
+
+    script.
+        $(document).ready(function(){
+            //- document.getElementById('layoutSidenav_nav').classList.add('toggled');
+            let ws_datasets=[]
+            $.ajax({
+                url: 'http://localhost:5000/getDatasets',
+                method: "GET",
+                success: function(response){
+                    const files = response.trainFiles || [];
+                    const testFiles = response.testFiles || [];
+                    const fileList = $('#files');
+                    const breadcrumbContainer = $('#breadcrumb');
+                    const hierarchyContainer = $('#hierarchyContainer');
+
+                    if (files.length === 0) {
+                        console.log("No datasets found.");
+                        return;
+                    }
+
+                    if (files.length > 0) {
+                        //- const folderIcon = 'https://upload.wikimedia.org/wikipedia/commons/6/6f/Folder_Icon.svg';
+                        const folderIcon = 'src\assets\img\folderIcon.png';
+                        let updatedDatasets = {}; // Initialize as an object
+                        let currentPath = [];
+                        //- The below peiece of code is to fetch all the workspace datasets.
+                        (async () => {
+                        try {
+                            const response = await fetch(`https://q8dt20upv8.execute-api.us-east-1.amazonaws.com/dev/read_dynamo/?table=${encodeURIComponent("work_space_datasets")}&DataRetreivalType=${encodeURIComponent("All")}`, {
+                                    method: 'GET',
+                                    headers: {
+                                                'Content-Type': 'application/json',
+                                            },
+                                    // Enable CORS
+                                    mode: 'cors',
+                            });
+                        if (response.ok){
+                            const result = await response.json();
+                            ws_datasets = result.map(item => item.dataset.split("/").pop())
+                            //- console.log("ws_datasets:",ws_datasets) 
+                            }
+                        }
+                        catch (error) {
+                           console.error("Error occurred during fetch:", error);
+                            }
+                        })()
+                        // Build hierarchy
+                        files.forEach(dataset => {
+                            //- console.log('dataset:',dataset)
+                            const parts = dataset.split('/');
+                            let current = updatedDatasets;
+                            parts.forEach((part, index) => {
+                                if (!current[part]) {
+                                    current[part] = { files: [], subfolders: {} };
+                                }
+                                if (index === parts.length - 1) {
+                                    current[part].files.push(dataset);
+                                } else {
+                                    current = current[part].subfolders;
+                                }
+                            });
+                        });
+                        //- console.log("Hierarchy:", updatedDatasets);
+                        function renderBreadcrumb() {
+                            breadcrumbContainer.empty();
+                            remove_insight_containers()
+                            if (currentPath.length === 0) {
+                                breadcrumbContainer.text('');
+                            } else {
+                                currentPath.forEach((folder, index) => {
+                                    const span = $('<span></span>')
+                                        .text(folder)
+                                        .css({ cursor: 'pointer', color: 'blue' })
+                                        .click(() => {
+                                            currentPath = currentPath.slice(0, index + 1);
+                                            renderHierarchy(getCurrentHierarchy());
+                                            renderBreadcrumb();
+                                        });
+                                    breadcrumbContainer.append(span);
+                                    if (index < currentPath.length - 1) {
+                                        breadcrumbContainer.append(' > ');
+                                    }
+                                });
+                            }
+                        }
+                        // Get current hierarchy based on breadcrumb
+                        function getCurrentHierarchy() {
+                            let currentHierarchy = updatedDatasets;
+                            currentPath.forEach(folder => {
+                            //- console.log("Inside GetCurrentHierarchy folder:",folder)
+                                if (!currentHierarchy[folder]) {
+                                    console.error("Folder not found:", folder);
+                                    currentHierarchy = null;
+                                    return;
+                                }
+                                currentHierarchy = currentHierarchy[folder].subfolders;
+                            });
+                            //- console.log("currentHierarchy:",currentHierarchy)
+                            return currentHierarchy;
+                        }
+                        // Render hierarchy
+                        let dataTable; // Global variable for DataTable instance
+                        function renderHierarchy(hierarchy) {
+                            if (!hierarchy) return;
+                            // If DataTable exists, clear its data
+                            if (dataTable) {
+                                dataTable.clear(); // Clear rows
+                            } else {
+                                // Initialize DataTable with additional columns
+                                hierarchyContainer.empty();
+                                const table = $(`
+                                    <table id="example" class="display">
+                                        <thead>
+                                            <tr>
+                                                <th>Object Name</th>
+                                                <th>Last Modified</th>
+                                                <th>Size</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                `);
+                                hierarchyContainer.append(table);
+                                // Initialize DataTable with enhanced properties
+                                dataTable = $('#example').DataTable({
+                                    pageLength: 10,       // Set rows per page
+                                    lengthChange: true,   // Allow user to change rows per page
+                                    paging: true,         // Enable pagination
+                                    searching: true,      // Enable search functionality
+                                    ordering: true,       // Enable column sorting
+                                    order: [[0, 'asc']],  // Default sorting on Object Name column
+                                    columnDefs: [
+                                        { orderable: true, targets: 0 }, // Disable sorting for the Object Name column (optional)
+                                        { type: 'date', targets: 1 },    // Ensure Last Modified is treated as a date column
+                                        { type: 'num', targets: 2 }      // Ensure Size is treated as a numeric column
+                                    ],
+                                });
+                            }
+                            const rows = []; // Array for new rows
+                            // Add folder and file rows
+                            Object.keys(hierarchy).forEach(folderName => {
+                                if (hierarchy[folderName].files.length === 0) {
+                                    // Add folder row (empty Last Modified and Size)
+                                    const folderHtml = `
+                                        <span class="folder-item" data-folder="${folderName}" style="cursor: pointer; color: blue;">
+                                            ${folderName}
+                                        </span>
+                                    `;
+                                    rows.push([folderHtml, '', '']);
+                                } else {
+                                    // Add file rows
+                                    hierarchy[folderName].files.forEach(file => {
+                                        const [fileName, lastModified, size] = file.split('~'); // Split file details
+                                        const isInDataset = ws_datasets.includes(fileName.split("/").pop());
+                                        //- console.log("ws_datasets:",ws_datasets)
+                                        //- console.log("fileName:",fileName)
+                                        const fileHtml = `
+                                            <input type="radio" id="${fileName}" name="fileSelection" value="${fileName}">
+                                            <label for="${fileName}">${fileName.split('/').pop()}</label>
+                                            ${isInDataset 
+                                            ?
+                                            `<button id="Remove" style="border:none;" title="Remove from Analytics workspace">-</button>`
+                                            :`<button id="Add" style="border:none;" title="Add to Analytics workspace">+</button>`}
+                                        `;
+                                        rows.push([fileHtml, lastModified.replace('Eastern Standard Time','EST').replace('Eastern Daylight Time','EDT'), size]); // Add row with file details
+                                    });
+                                }
+                            });
+                            // Add rows to DataTable and redraw with pagination
+                            dataTable.rows.add(rows).draw();
+                            // Event delegation for dynamically added folder items
+                            $('#hierarchyContainer').off('click', '.folder-item').on('click', '.folder-item', function () {
+                                const folderName = $(this).data('folder');
+                                currentPath.push(folderName);
+                                renderHierarchy(hierarchy[folderName].subfolders);
+                                renderBreadcrumb();
+                            });
+                        }
+                        function remove_insight_containers(){
+                            //- Remove existing h5_prob tag
+                            const existingh5_prob = $('#h5_prob');
+                            if (existingh5_prob.length > 0) {
+                                // If the dropdown exists, remove it
+                                existingh5_prob.remove();
+                            }
+                            //- Remove existing h5_target tag
+                            const existingh5_target = $('#h5_target');
+                            if (existingh5_target.length > 0) {
+                                // If the dropdown exists, remove it
+                                existingh5_target.remove();
+                            }
+                            //- ------------------ End of Container Removal --------------------------------
+                            //- Remove existing insightTable1 tag
+                            const existinginsightsTable1 = $('#insightsTable1');
+                            if (existinginsightsTable1.length > 0) {
+                                // If the dropdown exists, remove it
+                                existinginsightsTable1.remove();
+                            }
+                            //- Remove existing insightTable2 tag
+                            const existinginsightsTable2 = $('#insightsTable2');
+                            if (existinginsightsTable2.length > 0) {
+                                // If the dropdown exists, remove it
+                                existinginsightsTable2.remove();
+                            }
+                            //- Remove existing insightTable3 tag
+                            const existinginsightsTable3 = $('#insightsTable3');
+                            if (existinginsightsTable3.length > 0) {
+                                // If the dropdown exists, remove it
+                                existinginsightsTable3.remove();
+                            }
+                            //- Remove existing insightTable4 tag
+                            const existinginsightsTable4 = $('#insightsTable4');
+                            if (existinginsightsTable4.length > 0) {
+                                // If the dropdown exists, remove it
+                                existinginsightsTable4.remove();
+                            }
+                            //- Remove existing insightTable5 tag
+                            const existinginsightsTable5 = $('#insightsTable5');
+                            if (existinginsightsTable5.length > 0) {
+                                // If the dropdown exists, remove it
+                                existinginsightsTable5.remove();
+                            }
+                            //- Remove existing insightTable6 tag
+                            const existinginsightsTable6 = $('#insightsTable6');
+                            if (existinginsightsTable6.length > 0) {
+                                // If the dropdown exists, remove it
+                                existinginsightsTable6.remove();
+                            }
+                        }
+                        renderBreadcrumb();
+                        $('#hierarchyContainer').append(renderHierarchy(getCurrentHierarchy()));
+                        // Append action buttons only once
+                        $('#buttonsContainer').append('<button id="viewInsights">View Insights</button>');
+                        $('#buttonsContainer').append('<button id="viewMLInsights">View ML Insights</button>');
+                        $('#buttonsContainer').append('<button id="runML">Run ML</button>');
+                        $('#buttonsContainer').append('<button id="addToAnalytics">Add To WorkSpace</button>');
+                        //- The below peiece of code gets invoked when MLInsights button is clicked.
+                        document.getElementById('viewMLInsights').addEventListener('click', () => {
+                            const selectedFile = $('input[name="fileSelection"]:checked').val().split('~')[0];
+                            const dataset_name = "s3://explore-data-source/"+selectedFile
+                            const targetPage = 'Analytics.html';
+                            const urlWithParam = `${targetPage}?param=${encodeURIComponent(dataset_name)}`;
+                            // Redirect to the target page with the parameter
+                            window.location.href = urlWithParam;
+                        });
+                        //- $('#viewMLInsights').on('click', async function() {
+                        //-     const selectedFile = $('input[name="fileSelection"]:checked').val().split('~')[0];
+                        //-     dataset_name = "s3://explore-data-source/"+selectedFile
+
+                        //- }
+                        $('#example').on('click', '#Remove', async function () {
+                        //- $('#addToAnalytics').on('click', async function() {
+                            remove_insight_containers()
+                            // Get the selected radio button value
+                            const selectedFile = $('input[name="fileSelection"]:checked').val().split('~')[0];
+                            //- console.log("Inside viewInsights function:",selectedFile)
+                            if (selectedFile) { 
+                                // Clear the container before adding the new table
+                                dataset_name = "s3://explore-data-source/"+selectedFile
+                                const jsonObject = {};
+                                jsonObject['dataset'] = dataset_name
+                                let currentPage = dataTable.page();
+                                try {
+                                    const resp = await fetch('http://localhost:5000/removeFromworkspace', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(jsonObject),
+                                    });
+                                    // Check if the response is OK
+                                    if (resp.ok) {
+                                        const result = await resp;
+                                        //- alert("Dataset removed from workspace successfully");
+                                        const index = ws_datasets.indexOf(selectedFile.split('/').pop())
+                                        const dsx = ws_datasets.splice(index,1)
+                                        alert(`the dataset ${dsx} removed from ws_datasets`)
+                                        renderBreadcrumb();
+                                        $('#hierarchyContainer').append(renderHierarchy(getCurrentHierarchy()));
+                                        dataTable.page(currentPage).draw(false);
+                                    } else {
+                                        console.error("Server returned an error:", resp.status, resp.statusText);
+                                        alert(`Error removing dataset from workspace: ${resp.statusText}`);
+                                    }
+                                } catch (error) {
+                                    console.error("An error occurred during the fetch call:", error);
+                                    alert("Error removing dataset from workspace.");
+                                }
+                            }    
+                        });
+                        $('#example').on('click', '#Add', async function () {
+                        //- $('#addToAnalytics').on('click', async function() {
+                            remove_insight_containers()
+                            // Get the selected radio button value
+                            const selectedFile = $('input[name="fileSelection"]:checked').val().split('~')[0];
+                            //- console.log("Inside viewInsights function:",selectedFile)
+                            if (selectedFile) { 
+                                // Clear the container before adding the new table
+                                dataset_name = "s3://explore-data-source/"+selectedFile
+                                const jsonObject = {};
+                                jsonObject['dataset'] = dataset_name
+                                let currentPage = dataTable.page();
+                                try {
+                                    const resp = await fetch('http://localhost:5000/addtoworkspace', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(jsonObject),
+                                    });
+
+                                    // Check if the response is OK
+                                    if (resp.ok) {
+                                        const result = await resp;
+                                        ws_datasets.push(selectedFile.split('/').pop())
+                                        alert(`The dataset ${selectedFile.split('/').pop()} added to ws_datasets`)
+                                        renderBreadcrumb();
+                                        $('#hierarchyContainer').append(renderHierarchy(getCurrentHierarchy()));
+                                        dataTable.page(currentPage).draw(false);
+                                    } else {
+                                        console.error("Server returned an error:", resp.status, resp.statusText);
+                                        alert(`Error adding dataset to workspace: ${resp.statusText}`);
+                                    }
+                                } catch (error) {
+                                    console.error("An error occurred during the fetch call:", error);
+                                    alert("Error adding dataset to workspace.");
+                                }
+                            }    
+                        });
+                        // Add event listener for the button
+                        $('#viewInsights').on('click', async function() {
+                            //- The remove() statements are to remove the existing elements in the container.
+                            remove_insight_containers()
+                            // Get the selected radio button value
+                            const selectedFile = $('input[name="fileSelection"]:checked').val().split('~')[0];
+                            const tableName = 'data_insights'
+                            const DataRetreivalType='Single'
+                            //- console.log('currentPath:',currentPath)
+                            //- console.log("Inside viewInsights function:",selectedFile)
+                            if (selectedFile) { 
+                                console.log("Inside viewInsights function selectedFile:",selectedFile)
+                                // Clear the container before adding the new table
+                                dataset_name = "s3://explore-data-source/"+selectedFile
+                                //- console.log("The dataset name:",dataset_name)
+                                const response = await fetch(`https://q8dt20upv8.execute-api.us-east-1.amazonaws.com/dev/read_dynamo/?dataset=${encodeURIComponent(dataset_name)}&table=${encodeURIComponent(tableName)}&DataRetreivalType=${encodeURIComponent(DataRetreivalType)}`, {
+                                    method: 'GET',
+                                    headers: {
+                                                'Content-Type': 'application/json',
+                                            },
+                                    // Enable CORS
+                                    mode: 'cors',
+                                });
+                                try{
+                                    if (response.ok) {
+                                        //- $('#getSuggestions').prop('disabled', false)
+                                        const result = await response.json();
+                                        //- console.log("result:",result.insights.All_Data)
+                                        parsedResults = result.insights;
+                                        const keys = Object.keys(parsedResults);
+                                        // Creating the table with borders
+                                        let table = '<div id="insightsTable1" style="overflow:auto; max-height:500px;"><table style="border-collapse: collapse; width: 100%; border: 1px solid black;">'; // Set max-height and make it scrollable
+                                        // Adding table rows with borders for each cell
+                                        keys.forEach((key) => {
+                                            if (key!='Describe_Table' && key!='All_Data' && key!='Sample_Data' && key!= 'Cat_Nuniques'&& key!= 'Num_Nuniques' && key !='Null_Perecents'){
+                                                table += `<tr style="border: 1px solid black;">
+                                                        <td style="border: 1px solid black; padding: 5px;">${key}</td>
+                                                        <td style="border: 1px solid black; padding: 5px;">${parsedResults[key]}</td>
+                                                        </tr>`
+                                                };
+                                        });
+                                        table += '</table></div>';
+                                        // Append the table to the insights container
+                                        fileList.append(table);
+                                        if (parsedResults['Cat_Nuniques']){
+                                        const cat_nuniques = parsedResults['Cat_Nuniques'];
+                                        const tableKeys = Object.keys(cat_nuniques);
+                                        table = '<div id="insightsTable2" style="overflow:auto; max-height:500px;"><h4>Unique Counts of Categorical Variables</h4><table border="1" style="width: 100%; overflow-x: auto; display: block;">';
+                                        tableKeys.forEach((key) => {
+                                                table += `<th style="border: 1px solid black;">${key}</th>`;
+                                            });
+                                        table += `<tr style="border: 1px solid black;">`  
+                                        tableKeys.forEach((key) => {
+                                                table += `<td style="border: 1px solid black; padding: 5px;">${cat_nuniques[key]}</td>`; 
+                                            });
+                                        table += `</tr></thead><tbody>`;  
+                                        fileList.append(table);
+                                        } else {
+                                            alert('Unique Counts for categorical columns not found in results.');
+                                        }
+                                        
+                                        if (parsedResults['Num_Nuniques']){
+                                        const cat_nuniques = parsedResults['Num_Nuniques'];
+                                        const tableKeys = Object.keys(cat_nuniques);
+                                        table = '<div id="insightsTable3" style="overflow:auto; max-height:500px;"><h4>Unique Counts of Numerical Variables</h4><table border="1" style="width: 100%; overflow-x: auto; display: block;">';
+                                        tableKeys.forEach((key) => {
+                                                table += `<th style="border: 1px solid black;">${key}</th>`;
+                                            });
+                                        table += `<tr style="border: 1px solid black;">`  
+                                        tableKeys.forEach((key) => {
+                                                table += `<td style="border: 1px solid black; padding: 5px;">${cat_nuniques[key]}</td>`; 
+                                            });
+                                        table += `</tr></thead><tbody>`;  
+                                        fileList.append(table);
+                                        } else {
+                                            alert('Unique Counts for numerical columns not found in results.');
+                                        }
+                                        //- Null percentages
+                                        if (parsedResults['Null_Perecents']){
+                                        const null_percents = parsedResults['Null_Perecents'];
+                                        const tableKeys = Object.keys(null_percents);
+                                        table = '<div id="insightsTable6" style="overflow:auto; max-height:500px;"><h4>Columns with null percentages</h4><table border="1" style="width: 100%; overflow-x: auto; display: block;">';
+                                        tableKeys.forEach((key) => {
+                                                table += `<th style="border: 1px solid black;">${key}</th>`;
+                                            });
+                                        table += `<tr style="border: 1px solid black;">`  
+                                        tableKeys.forEach((key) => {
+                                                table += `<td style="border: 1px solid black; padding: 5px;">${null_percents[key]}</td>`; 
+                                            });
+                                        table += `</tr></thead><tbody>`;  
+                                        fileList.append(table);
+                                        }
+                                        if (parsedResults['Describe_Table']) {
+                                            const describeTable = parsedResults['Describe_Table'];
+                                            const tableKeys = Object.keys(describeTable);
+                                            const stats = Object.keys(describeTable[tableKeys[0]]);
+                                        
+                                            table = '<div id="insightsTable4" style="overflow:auto; max-height:500px;"><h4>Describe Data</h4><table border="1" style="width: 100%; overflow-x: auto; display: block;">';
+                                            table += '<thead "border: 1px solid black;"><tr style="border: 1px solid black;"><th style="border: 1px solid black;">Metric</th>';
+
+                                            tableKeys.forEach((key) => {
+                                                table += `<th style="border: 1px solid black;">${key}</th>`;
+                                            });
+
+                                            table += '</tr></thead><tbody>';
+
+                                            // Adding data rows
+                                            stats.forEach((stat) => {
+                                                table += `<tr style="border: 1px solid black;"><td style="border: 1px solid black;">${stat}</td>`;
+                                                tableKeys.forEach(value => {
+                                                    table += `<td style="border: 1px solid black;">${describeTable[value][stat]}</td>`;
+                                                });
+                                                table += '</tr>';
+                                            });
+                                            table += '</tbody></table>';
+                                            fileList.append(table);
+                                            } else {
+                                                alert('Describe_Table data not found in results.');
+                                            }
+                                            
+                                    // Check if 'Sample Data' exists
+                                        if (parsedResults['All_Data']) {
+                                            const sampleData = parsedResults['All_Data'];
+                                            const sampleDataKeys = Object.keys(sampleData[0]); // Access keys of the first movie object
+                                            // Start building the table with headers
+                                            let table2 = '<div id="insightsTable5" style="overflow:auto; max-height:500px;"><h4> Sample Data</h4><table border="1" style="width: 100%; overflow-x: auto; display: block;">';
+                                            table2 += '<thead style="border: 1px solid black;"><tr style="border: 1px solid black;"><th style="border: 1px solid black;">S.No.</th>';
+
+                                            // Create table headers from the keys of the movie object
+                                            sampleDataKeys.forEach((key) => {
+                                                table2 += `<th style="border: 1px solid black;">${key}</th>`;
+                                            });
+
+                                            table2 += '</tr></thead><tbody>';
+
+                                            // Adding data rows
+                                            sampleData.forEach((movie, index) => {
+                                                table2 += `<tr style="border: 1px solid black;"><td style="border: 1px solid black;">${index}</td>`; // S.No. column
+
+                                                // Add each value in the movie object as a table cell
+                                                sampleDataKeys.forEach(key => {
+                                                    table2 += `<td style="border: 1px solid black;">${movie[key]}</td>`;
+                                                });
+
+                                                table2 += '</tr>';
+                                            });
+
+                                            table2 += '</tbody></table>';
+                                            fileList.append(table2);
+
+                                            } else {
+                                                alert('Sample_Data not found in results.');
+                                            }
+                                        
+                                    } else {
+                                        alert('Not Ok response from Insights.');
+                                    }
+                                    }    catch(error){
+                                        alert("Looks insights data not available for the file")
+                                        }    
+                                        
+                            }
+                        });
+                        //- --------------------------------------------------------------------------------------------------------------------------------------------------
+                        //-  The below piece of code gets executed when RUNML button is clicked on the screen.
+                        //- --------------------------------------------------------------------------------------------------------------------------------------------------
+                        $('#runML').on('click', async function() {
+                            const selectedFile = $('input[name="fileSelection"]:checked').val().split('~').pop();
+                            console.log("The file selected is :",selectedFile)
+                            //- Remove existing insightTable1 tag
+                            const existinginsightsTable1 = $('#insightsTable1');
+                            if (existinginsightsTable1.length > 0) {
+                                // If the dropdown exists, remove it
+                                existinginsightsTable1.remove();
+                            }
+                            //- Remove existing insightTable2 tag
+                            const existinginsightsTable2 = $('#insightsTable2');
+                            if (existinginsightsTable2.length > 0) {
+                                // If the dropdown exists, remove it
+                                existinginsightsTable2.remove();
+                            }
+                            //- Remove existing insightTable3 tag
+                            const existinginsightsTable3 = $('#insightsTable3');
+                            if (existinginsightsTable3.length > 0) {
+                                // If the dropdown exists, remove it
+                                existinginsightsTable3.remove();
+                            }
+                            //- Remove existing insightTable4 tag
+                            const existinginsightsTable4 = $('#insightsTable4');
+                            if (existinginsightsTable4.length > 0) {
+                                // If the dropdown exists, remove it
+                                existinginsightsTable4.remove();
+                            }
+                            //- Remove existing insightTable5 tag
+                            const existinginsightsTable5 = $('#insightsTable5');
+                            if (existinginsightsTable5.length > 0) {
+                                // If the dropdown exists, remove it
+                                existinginsightsTable5.remove();
+                            }
+                            //- Remove existing insightTable6 tag
+                            const existinginsightsTable6 = $('#insightsTable6');
+                            if (existinginsightsTable6.length > 0) {
+                                // If the dropdown exists, remove it
+                                existinginsightsTable6.remove();
+                            }
+                            //- Remove existing h5_prob tag
+                            const existingh5_prob = $('#h5_prob');
+                            if (existingh5_prob.length > 0) {
+                                // If the dropdown exists, remove it
+                                existingh5_prob.remove();
+                            }
+                            //- Remove existing dropdown
+                            const existingDropdown = $('#fileDropdown');
+                            if (existingDropdown.length > 0) {
+                                    // If the dropdown exists, remove it
+                                    existingDropdown.remove();
+                            }
+                            //- Remove existing h5_target tag
+                            const existingh5_target = $('#h5_target');
+                            if (existingh5_target.length > 0) {
+                                // If the dropdown exists, remove it
+                                existingh5_target.remove();
+                            }
+                            //- Remove existing h5_target tag
+                            const existinginsightsContainer = $('#insightsContainer');
+                            if (existinginsightsContainer.length > 0) {
+                                // If the dropdown exists, remove it
+                                existinginsightsContainer.remove();
+                            }
+                            //- Remove existing h5_proceed tag
+                            const existingh5_proceed = $('#h5_proceed');
+                            if (existingh5_proceed.length > 0) {
+                                // If the dropdown exists, remove it
+                                existingh5_proceed.remove();
+                            }
+                            if (selectedFile!=undefined) { 
+                                const problem_type = $(`
+                                    <h5 id="h5_prob">What is the problem type you are trying to solve
+                                        <select id="problemTypeSelect">
+                                            <option value=""></option>
+                                            <option value="classification">Classification</option>
+                                            <option value="regression">Regression</option>
+                                        </select>
+                                    </h5>
+                                `);
+                                // Append the dropdown to the fileList container
+                                fileList.append(problem_type);
+                                //- console.log("$('#prob_type').length:",$('#prob_type').length)
+                                $('#problemTypeSelect').on('change', async function() {
+                                    const selectedProbType = $(this).val();
+                                    //- console.log("The selected probtype is:", selectedProbType);
+                                    //- Remove existing h5_proceed tag
+                                    const existingh5_proceed = $('#h5_proceed');
+                                        if (existingh5_proceed.length > 0) {
+                                            // If the dropdown exists, remove it
+                                            existingh5_proceed.remove();
+                                        }
+                                    //- Remove existing h5_target tag
+                                    const existingh5_target = $('#h5_target');
+                                    if (existingh5_target.length > 0) {
+                                        // If the dropdown exists, remove it
+                                        existingh5_target.remove();
+                                    }    
+                                if (selectedProbType){
+                                    console.log("parsedResults:",parsedResults)
+                                    if (parsedResults === ""){
+                                        //- dataset_name = "s3://explore-data-source/source/train/"+selectedFile
+                                        dataset_name = "s3://explore-data-source/"+selectedFile
+                                        console.log("The dataset name:",dataset_name)
+                                        const response = await fetch(`https://q8dt20upv8.execute-api.us-east-1.amazonaws.com/dev/?dataset=${encodeURIComponent(dataset_name)}`, {
+                                            method: 'GET',
+                                            headers: {
+                                                    'Content-Type': 'application/json',
+                                                    // Add any other headers you need
+                                                },
+                                        // Enable CORS
+                                        mode: 'cors',
+                                    });
+                                    
+                                    if (response.ok) {
+                                        const result = await response.json();
+                                        parsedResults = result.insights;
+                                        const keys = Object.keys(parsedResults);
+                                        //- console.log("Inside response.ok:",parsedResults)
+                                        if (parsedResults['Categorical_Columns']) {
+                                            const cat_Cols = parsedResults['Categorical_Columns'];
+                                            //- console.log("Unique values of all columns:",parsedResults['unique_vals'])
+                                        if (cat_Cols.length > 0) {
+                                            // Create the dropdown select element
+                                            if (!$('#fileDropdown').length){
+                                                const dropdown = $(`
+                                                    <h5 id="h5_target">Select the target column for classification: 
+                                                        <select id="targetColDropDown">
+                                                            <option value=""></option>
+                                                            ${cat_Cols.map(col => `<option value="${col}">${col}</option>`).join('')}
+                                                        </select>
+                                                    </h5>
+                                                `);
+                                                // Append the dropdown to the fileList container
+                                                fileList.append(dropdown);
+                                            }
+                                        }
+
+                                        $('#targetColDropDown').on('change', async function() {
+                                            const selectedCol = $(this).val();
+                                            //- console.log("The selected file is:", selectedCol);
+                                            //- Remove existing h5_proceed tag
+                                            const existingh5_proceed = $('#h5_proceed');
+                                            if (existingh5_proceed.length > 0) {
+                                                // If the dropdown exists, remove it
+                                                existingh5_proceed.remove();
+                                            }
+                                            if (selectedCol) {
+                                                // Perform action with the selected file
+                                                try {   
+                                                    if (parsedResults['Cat_Nuniques'][selectedCol] >5){
+                                                        alert(`${selectedCol} contains more than 5 unique values. It cant be used for classification. Please select a different column.`)
+                                                        $("#targetColDropDown").val('');
+                                                    }
+                                                    else{
+                                                    testFileName = selectedFile.split("_")[0] + '_test.csv'                       
+                                                    if (testFiles.includes(testFileName)  ){
+                                                        //-   console.log(`Test file ${testFileName} is in ${testFiles} `)
+                                                        const start_ml_run = $(`
+                                                            <h5 id="h5_proceed"><div>Test file identified is: ${testFileName}.<div>
+                                                            <div> Data classifiers are: ${parsedResults['Cat_Nuniques'][selectedCol]}</div> 
+                                                            <div><button id="Proceed">Proceed</button></div>
+                                                            </h5>
+                                                        `);
+                                                        // Append the dropdown to the fileList container
+                                                        fileList.append(start_ml_run);
+                                                        $('#Proceed').on('click', async function() {
+                                                        //-   console.log('Clicked on proceed button')
+                                                        const response = await fetch(`http://localhost:5000/getInsights?file=${encodeURIComponent(selectedFile)}&query1=${encodeURIComponent(selectedCol)}&query2=Proceed`, {
+                                                                                            method: 'GET'
+                                                        });
+                                                        if (response.ok){
+                                                                const result = await response.json();
+                                                                console.log("The result from ml run:",result)
+                                                        }
+                                                        })
+                                                    }
+                                                    }
+                                                    }catch(error){
+                                                        console.error("Error fetching running thru ML:",error);
+                                                        }
+                                                }    
+                                            });
+                                        }
+                                        }
+                                    }   else{
+                                        if (parsedResults['Categorical_Columns']) {
+                                            const cat_Cols = parsedResults['Categorical_Columns'];
+                                        if (cat_Cols.length > 0) {
+                                            // Create the dropdown select element
+                                            if (!$('#fileDropdown').length){
+                                                const dropdown = $(`
+                                                    <h5 id="h5_target">Select the target column for classification: 
+                                                        <select id="targetColDropDown">
+                                                            <option value=""></option>
+                                                            ${cat_Cols.map(col => `<option value="${col}">${col}</option>`).join('')}
+                                                        </select>
+                                                    </h5>
+                                                `);
+                                                // Append the dropdown to the fileList container
+                                                fileList.append(dropdown);
+                                            }
+                                        }
+                                        $('#targetColDropDown').on('change', async function() {
+                                            const selectedCol = $(this).val();
+                                            //- Remove existing h5_proceed tag
+                                            const existingh5_proceed = $('#h5_proceed');
+                                            if (existingh5_proceed.length > 0) {
+                                                // If the dropdown exists, remove it
+                                                existingh5_proceed.remove();
+                                            }
+                                            if (selectedCol) {
+                                                // Perform action with the selected file
+                                                try {   
+                                                    if (parsedResults['Cat_Nuniques'][selectedCol] >5){
+                                                        alert(`${selectedCol} contains more than 5 unique values. It cant be used for classification. Please select a different column.`)
+                                                        $("#targetColDropDown").val('');
+                                                    }
+                                                    else{
+                                                    testFileName = selectedFile.split("_")[0] + '_test.csv'                       
+                                                    if (testFiles.includes(testFileName)  ){
+                                                        //-   console.log(`Test file ${testFileName} is in ${testFiles} `)
+                                                        const start_ml_run = $(`
+                                                            <h5 id="h5_proceed"><div>Test file identified is: ${testFileName}.<div>
+                                                            <div> Data classifiers are: ${parsedResults['Cat_Nuniques'][selectedCol]}</div> 
+                                                            <div><button id="Proceed">Proceed</button></div>
+                                                            </h5>
+                                                        `);
+                                                        // Append the dropdown to the fileList container
+                                                        fileList.append(start_ml_run);
+                                                        $('#Proceed').on('click', async function() {
+                                                        //-   console.log('Clicked on proceed button')
+                                                        const response = await fetch(`http://localhost:5000/getInsights?file=${encodeURIComponent(selectedFile)}&query1=${encodeURIComponent(selectedCol)}&query2=Proceed`, {
+                                                                                            method: 'GET'
+                                                        });
+                                                        if (response.ok){
+                                                                const result = await response.json();
+                                                                console.log("The result from ml run:",result)
+                                                        }
+                                                        })
+                                                    }
+                                                    }
+                                                    }catch(error){
+                                                        console.error("Error fetching running thru ML:",error);
+                                                        }
+                                                }    
+                                            });
+                                        }
+                                    }
+                            }})
+                                }else {
+                                    alert("Select a file from the list")  }
+                            })
+                            
+                        //---------------------------- End of RUNML button ---------------------------------- 
+                    }  
+                    else {
+                        fileList.append('<li>No files found in the S3 bucket.</li>');
+                    }  
+                }
+            });
+        });
+

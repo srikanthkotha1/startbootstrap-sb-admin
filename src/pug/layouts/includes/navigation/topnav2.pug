@@ -1,0 +1,53 @@
+nav.sb-topnav.navbar.navbar-expand.navbar-dark.bg-dark
+
+    // Navbar Brand
+    a.navbar-brand.ps-3(href='index.html')
+        | Explore Data
+
+    // Sidebar Toggle
+    button#sidebarToggle.btn.btn-link.btn-sm.order-1.order-lg-0.me-4.me-lg-0(href='#!')
+        i.fas.fa-bars
+    // Navbar
+    ul.navbar-nav.me-0.me-md-3.my-2.my-md-0
+        li.nav-item.dropdown 
+            a#navbarDropdown.nav-link.dropdown-toggle(href='#' role='button' data-bs-toggle='dropdown' aria-expanded='false')
+                i.fas.fa-fw 
+                | ML Metrics
+            ul.dropdown-menu(aria-labelledby='navbarDropdown') 
+                li
+                    a.dropdown-item(href='#!',id='confusionMatrixLink') Confusion Matrix
+                li
+                    a.dropdown-item(href='#!',id='modelParamsLink') Model Parameters
+                li
+                    a.dropdown-item(href='#!',id='importantFeaturesLink') Important Features
+        li.nav-item.dropdown 
+            a#navbarDropdown.nav-link.dropdown-toggle(href='#' role='button' data-bs-toggle='dropdown' aria-expanded='false')
+                i.fas.fa-fw 
+                | Charts
+            ul.dropdown-menu(aria-labelledby='navbarDropdown') 
+                li
+                    a.dropdown-item(href='#!',id='LineChartLink') Line Chart
+                li
+                    a.dropdown-item(href='#!',id='PieChartLink') Pie Chart
+                li
+                    a.dropdown-item(href='#!',id='BarChartLink') Bar Chart 
+        nav-item 
+            a#navnlpbutton.nav-link(href='#!' role='button' aria-expanded='false')
+                i.fas.fa-fw 
+                | Ask ChatGPT   
+    // Navbar
+    
+    ul.navbar-nav.ms-auto
+        li.nav-item.dropdown
+            a#navbarDropdown.nav-link.dropdown-toggle(href='#' role='button' data-bs-toggle='dropdown' aria-expanded='false')
+                i.fas.fa-user.fa-fw
+            ul.dropdown-menu.dropdown-menu-end(aria-labelledby='navbarDropdown')
+                li
+                    a.dropdown-item(href='#!') Settings
+                li
+                    a.dropdown-item(href='#!') Activity Log
+                li
+                    hr.dropdown-divider
+                li
+                    a.dropdown-item(href='#!') Logout
+

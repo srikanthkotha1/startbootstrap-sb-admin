@@ -1,0 +1,115 @@
+nav(class=['sb-sidenav', 'accordion'] class=sidenavStyle)#sidenavAccordion
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>    
+    .sb-sidenav-menu
+        
+        .nav
+            .sb-sidenav-menu-heading 
+            a.nav-link()
+                .sb-nav-link-icon 
+                    | New Workspace
+        #dv1.sb-sidenav-menu  
+    .sb-sidenav-footer
+        .small Logged in as:
+        | Start Bootstrap
+    .resize-handle    
+    script.
+        let columns=""
+        document.addEventListener('DOMContentLoaded', async () => {
+            const sidenav = document.getElementById("sidenavAccordion");
+            const resizeHandle = document.querySelector(".resize-handle");
+
+            let isResizing = false;
+
+            // Mouse down event to start resizing
+            resizeHandle.addEventListener("mousedown", (e) => {
+                isResizing = true;
+                document.body.style.cursor = "ew-resize";
+            });
+
+            // Mouse move event to resize the sidebar
+            document.addEventListener("mousemove", (e) => {
+                if (isResizing) {
+                    const newWidth = e.clientX; // Mouse position on X-axis
+                    const minWidth = 150; // Minimum width
+                    const maxWidth = 500; // Maximum width
+
+                    // Adjust width within the bounds
+                    if (newWidth > minWidth && newWidth < maxWidth) {
+                        sidenav.style.width = `${newWidth}px`;
+                    }
+                }
+            });
+
+            // Mouse up event to stop resizing
+            document.addEventListener("mouseup", () => {
+                isResizing = false;
+                document.body.style.cursor = "default";
+            });  
+            
+            let html = '<div><ul class="ul_class">';
+            //- try {
+                // Extract the parameter from the URL
+                const urlParams = new URLSearchParams(window.location.search);
+                const dataset_name = urlParams.get('param');
+                console.log("dataset_name:",dataset_name)
+                html += `
+                    <li>
+                        <span class="toggle-btn" style="cursor: pointer;">+</span>
+                        <span style="display: inline-block; margin-left: 5px;">${dataset_name.split('/').pop()}</span>
+                        <ul class="schema-columns" style="display: none;"></ul>
+                    </li>`;
+                //- const tableName = 'data_insights'
+                //- const DataRetreivalType='Single'
+                const resp2 = await fetch(`https://q8dt20upv8.execute-api.us-east-1.amazonaws.com/dev/get_table_schema/?dataset=${encodeURIComponent(dataset_name)}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-type': 'application/json',
+                    },
+                    mode: 'cors',
+                });
+
+                if (resp2.status === 404) {
+                    console.error('404 Error: Schema not found for', dataset_name);
+                    return null;
+                } else if (!resp2.ok) {
+                    console.error('Error:', resp2.status, resp2.statusText);
+                    return null;
+                }
+
+                let results2 = await resp2.json();
+                columns = Object.keys(results2.insights);
+               
+                //- const datasets = await response.json();
+                console.log('columns:',columns)
+                // Select the sidebar container
+                const sidebarNav = document.querySelector('.nav');
+                html += '</ul></div>';
+                $('#dv1').empty().append(html);
+                // Add the toggle functionality after rendering
+                $('.toggle-btn').click(async function () {
+                    const $btn = $(this);
+                    // console.log("$btn:",$btn)
+                    const $columnsList = $btn.next().next('.schema-columns'); // Find the schema columns list
+                    // Toggle the visibility and change the button text
+                    if ($columnsList.is(':visible')) {
+                        $columnsList.hide();
+                        $columnsList.empty();
+                        $btn.text('+');
+                    } else {
+                        $btn.text('-');
+                            dataset = $btn.next().text().trim();
+                            //- const columns = await get_schema(dataset);
+                            const col_keys=columns
+                            if (col_keys) {
+                                col_keys.forEach(column => {
+                                    $columnsList.append(`<li draggable="true" ondragstart="drag(event)">${column}</li>`);
+                                });
+                            } else {
+                                $columnsList.append('<li>Schema could not be fetched</li>');
+                            }
+                        // }
+                        $columnsList.show();
+                    }
+                });
+
+            });

@@ -9,7 +9,7 @@
     flex-direction: column;
     height: 100%;
     flex-wrap: nowrap;
-
+    position: relative;
     .sb-sidenav-menu {
         flex-grow: 1;
 
@@ -59,4 +59,13 @@
         padding: 0.75rem;
         flex-shrink: 0;
     }
+}
+.resize-handle {
+    width: 5px;
+    cursor: ew-resize; /* Horizontal resize cursor */
+    background-color: #888; /* Handle color */
+    height: 100%;
+    position: absolute;
+    top: 0;
+    right: 0;
 }

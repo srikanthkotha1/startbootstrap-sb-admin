@@ -2,86 +2,141 @@ extends ../layouts/dashboard.pug
 
 block config
     - var bodyClass = 'sb-nav-fixed'
-    - var pageTitle = 'Dashboard';
+    - var pageTitle = 'Welcome to Explore-Data';
     - var index = true;
-    - var sidenavStyle = 'sb-sidenav-dark'
+    - var sidenavStyle = 'sb-sidenav-light'
     
 prepend css
     //- Load Simple DataTables Stylesheet
     link(href='https://cdn.jsdelivr.net/npm/simple-datatables@7.1.2/dist/style.min.css', rel='stylesheet')
-
 block content
-    .container-fluid.px-4
-        include includes/page-header.pug
-        .row
-            .col-xl-3.col-md-6
-                .card.bg-primary.text-white.mb-4
-                    .card-body
-                        | Primary Card
-                    .card-footer.d-flex.align-items-center.justify-content-between
-                        a(href='#').small.text-white.stretched-link
-                            | View Details
-                        .small.text-white
-                            i.fas.fa-angle-right
-            .col-xl-3.col-md-6
-                .card.bg-warning.text-white.mb-4
-                    .card-body
-                        | Warning Card
-                    .card-footer.d-flex.align-items-center.justify-content-between
-                        a(href='#').small.text-white.stretched-link
-                            | View Details
-                        .small.text-white
-                            i.fas.fa-angle-right
-            .col-xl-3.col-md-6
-                .card.bg-success.text-white.mb-4
-                    .card-body
-                        | Success Card
-                    .card-footer.d-flex.align-items-center.justify-content-between
-                        a(href='#').small.text-white.stretched-link
-                            | View Details
-                        .small.text-white
-                            i.fas.fa-angle-right
-            .col-xl-3.col-md-6
-                .card.bg-danger.text-white.mb-4
-                    .card-body
-                        | Danger Card
-                    .card-footer.d-flex.align-items-center.justify-content-between
-                        a(href='#').small.text-white.stretched-link
-                            | View Details
-                        .small.text-white
-                            i.fas.fa-angle-right
-        .row
-
-            .col-xl-6
-                .card.mb-4
-                    .card-header
-                        i.fas.fa-chart-area.me-1
-                        | Area Chart Example
-                    .card-body
-                        canvas#myAreaChart(width='100%', height='40')
-                    
-            .col-xl-6
-                .card.mb-4
-                    .card-header
-                        i.fas.fa-chart-bar.me-1
-                        | Bar Chart Example
-                    .card-body
-                        canvas#myBarChart(width='100%', height='40')
-        
-        .card.mb-4
-            .card-header
-                i.fas.fa-table.me-1
-                | DataTable Example
-            .card-body
-                include includes/datatable.pug
-
-
+    .container-fluid
+       h1.mb-4= pageTitle
+       form#uploadForm(enctype="multipart/form-data")
+            // Radio Button Input
+            div
+                label(for="prob_type") Choose the problem type:
+                input(type="radio" name="prob_type_option" id="prob_type_radio_opt1" value="Regression" required)
+                label(for="radioOption1") Regression
+                input(type="radio" name="prob_type_option" id="prob_type_radio_opt2" value="Classification" required)
+                label(for="radioOption2") Classification
+                input(type="radio" name="prob_type_option" id="prob_type_radio_opt3" value="Clustering" required)
+                label(for="radioOption3") Clustering
+                input(type="radio" name="prob_type_option" id="prob_type_radio_opt4" value="None" required)
+                label(for="radioOption4") None
+            div     
+                // Text Area Input
+                label(for="tgt_col") Enter Target Column Name:
+                    textarea(name="tgt_col" id="tgt_col_id" rows="1" cols="50" placeholder="Target Column" required)
+            div    
+                // File Upload Input
+                label(for="fileUpload") Upload Dataset(Training Dataset):
+                    input(type="file" enctype="multipart/form-data" name="fileUpload" id="fileUpload" requred)
+            div
+                label(for="availTest") Is test file available?:
+                input(type="radio" name="availTest_option" id="testFileOption1" value="YesTestFile" required)
+                label(for="radioOption1") Yes
+                input(type="radio" name="availTest_option" id="testFileOption2" value="NoTestFile" required)
+                label(for="radioOption2") No
+            div#testFileContainer(style="display: none;")    
+                // File Upload Input
+                label(for="testFileUpload") Upload Test Dataset:
+                    input(type="file" enctype="multipart/form-data" name="testFileUpload" id="testFileUpload" )
+            // Submit Button
+            //- button(type="submit") Submit
+            button(type="submit", style="margin-left: auto;") Submit
 append scripts
-    //- Load Chart.js and demos
-    script(src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.js', crossorigin='anonymous')
-    script(src='assets/demo/chart-area-demo.js')
-    script(src='assets/demo/chart-bar-demo.js')
     
-    //- Load Simple DataTables Scripts
-    script(src='https://cdn.jsdelivr.net/npm/simple-datatables@7.1.2/dist/umd/simple-datatables.min.js', crossorigin='anonymous')
-    script(src='js/datatables-simple-demo.js')
+    // File Upload Script
+    script.
+        document.getElementById('uploadForm').addEventListener('submit', async function(event) {
+            //- console.log("Inside button addEventListener function")
+            
+            event.preventDefault(); // Prevent form from submitting the traditional way
+            const prob_type=document.querySelector('input[name="prob_type_option"]:checked').value;
+            const fileInput = document.getElementById('fileUpload');
+            let file = fileInput.files[0];
+            //- console.log("The file name is:",file)
+            if (file.name.endsWith(".zip")){
+                alert('.zip is not a valid file format type');
+                return;
+            }
+            if (!file) {
+                alert('Please select a file before submitting.');
+                return;
+            }
+
+            const formData = new FormData(this);
+            //- formData.append('file', file);
+            const jsonObject = {};
+            //- console.log("-------------------------------------formData.entries() :",formData.entries())
+            for (let [key, value] of formData.entries()) {
+               console.log(`${key}:`, value);
+            }
+            for (let [key, value] of formData.entries()) {
+            if (value instanceof File) {
+                jsonObject[key] = value.name
+                }else{
+                    jsonObject[key] = value
+                }
+            
+            }
+            //- formData.append('file', file);
+            //- console.log("jsonObject:",jsonObject)
+            try {
+                //- const response = await fetch('http://3.85.223.29:5000/upload', {
+                const response = await fetch('http://localhost:5000/upload', {
+                //- const response = await fetch('http://172.29.163.66:5000/api/sendform', {
+                    method: 'POST',
+                        //- headers: {
+                        //-     'Content-Type': 'application/json' // Set Content-Type to application/json
+                        //- },
+                    body: formData
+                    //- body: JSON.stringify(jsonObject)
+                });
+
+            if (response.ok || true) {
+            //- if (true){
+                alert('File submitted successfully!');
+                console.log("Response for file submission")
+                document.getElementById('uploadForm').reset()
+            } else {
+                alert('File upload failed.');
+            }
+            } catch (error) {
+                console.error('Error uploading file:', error);
+                alert('Error uploading file.');
+            }
+        });
+        //- Function to handle 
+        // Define the function separately
+        function toggleTextareaRequired() {
+            const isOptionalSelected = document.querySelector('input[name="prob_type_option"]:checked').value;
+            const textarea = document.getElementById('tgt_col_id');
+            if (isOptionalSelected=="None") {
+                textarea.removeAttribute('required'); // Make it optional
+            } else {
+                textarea.setAttribute('required', ''); // Make it mandatory
+            }
+            
+        }
+        function toggleFileUploadRequired() {
+            const isAvailTestOptionSelected = document.querySelector('input[name="availTest_option"]:checked').value;
+            const testFileContainer = document.getElementById('testFileContainer');
+            const testFileUpload = document.getElementById('testFileUpload');
+            if (isAvailTestOptionSelected=="YesTestFile") {
+                testFileUpload.setAttribute('required', '');
+                testFileContainer.style.display = "block"; // Make it optional
+            } else {
+                testFileUpload.removeAttribute('required'); // Make it mandatory
+                testFileContainer.style.display = "none";
+            }
+        }    
+        // Add event listeners for the radio buttons
+        document.getElementById('prob_type_radio_opt1').addEventListener('change', toggleTextareaRequired);
+        document.getElementById('prob_type_radio_opt2').addEventListener('change', toggleTextareaRequired);
+        document.getElementById('prob_type_radio_opt3').addEventListener('change', toggleTextareaRequired);
+        document.getElementById('prob_type_radio_opt4').addEventListener('change', toggleTextareaRequired);
+        
+        document.getElementById('testFileOption1').addEventListener('change', toggleFileUploadRequired);
+        document.getElementById('testFileOption2').addEventListener('change', toggleFileUploadRequired);
